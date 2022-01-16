@@ -18,7 +18,7 @@ class Tokenizer(object):
         self.UNK_TOKEN = '[UNK]'
 
     def set_vocab(self, vocab):
-        self.vocab_dict = vocab
+        self.vocab = vocab
         self.tokenizer = JiebaTokenizer(vocab=vocab)
 
     def build_vocab(self, sentences):
@@ -50,9 +50,9 @@ class Tokenizer(object):
 
     def text_to_ids(self, text):
         input_ids = []
-        unk_token_id = self.vocab_dict[self.UNK_TOKEN]
+        unk_token_id = self.vocab[self.UNK_TOKEN]
         for token in self.tokenizer.cut(text):
-            token_id = self.vocab.token_to_indx.get(token, unk_token_id)
+            token_id = self.vocab.token_to_idx.get(token, unk_token_id)
             input_ids.append(token_id)
         return input_ids
 

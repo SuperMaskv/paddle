@@ -32,6 +32,14 @@ def evaluate(model: nn.Layer, criterion, metric: paddle.metric.Metric, data_load
     for batch in data_loader:
         input_ids, token_type_ids, labels = batch
         probs = model(input_ids=input_ids, token_type_ids=token_type_ids)
+        loss = criterion(probs, labels)
+        losses.append(loss.numpy())
+        correct = metric.compute(probs, labels)
+        metric.update(correct)
+        accu = metric.accumulate()
+    print("eval {} loss: {:.5}, accu: {:.5}".format(phase, np.mean(losses), accu))
+    model.train()
+    metric.reset()
 
 
 def main():

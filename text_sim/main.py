@@ -1,5 +1,5 @@
+import os
 import time
-
 import paddle.io
 import paddlenlp.transformers
 from paddlenlp.datasets import load_dataset
@@ -45,8 +45,7 @@ def evaluate(model: nn.Layer, criterion, metric: paddle.metric.Metric, data_load
 def main():
     train_ds, dev_ds = load_dataset("lcqmc", splits=['train', 'dev'])
     tokenizer = paddlenlp.transformers.ErnieGramTokenizer.from_pretrained("ernie-gram-zh")
-    input_ids, token_type_ids, label = convert_example(train_ds[0], tokenizer)
-    trans_fn = partial(convert_example, tokenizer=tokenizer, max_seq_len=512)
+    trans_fn = partial(convert_example, tokenizer=tokenizer, max_seq_length=512)
     batchify_fn = lambda samples, fn=Tuple(
         Pad(pad_val=tokenizer.pad_token_id),
         Pad(pad_val=tokenizer.pad_token_type_id),
@@ -57,7 +56,7 @@ def main():
     train_dataloader = paddle.io.DataLoader(
         dataset=train_ds.map(trans_fn),
         batch_sampler=batch_sampler,
-        shuffle=True,
+        return_list=True,
         collate_fn=batchify_fn
     )
     # 构建验证集数据加载器
@@ -66,7 +65,7 @@ def main():
         dataset=dev_ds.map(trans_fn),
         batch_sampler=dev_batch_sampler,
         collate_fn=batchify_fn,
-        shuffle=True
+        return_list=True
     )
 
     pretrained_model = paddlenlp.transformers.ErnieGramModel.from_pretrained("ernie-gram-zh")
@@ -88,6 +87,38 @@ def main():
     criterion = paddle.nn.loss.CrossEntropyLoss()
 
     metric = paddle.metric.Accuracy()
+    global_step = 0
+    tic_train = time.time()
+
+    for epoch in range(1, epochs + 1):
+        for step, batch in enumerate(train_dataloader, start=1):
+            input_ids, token_type_ids, labels = batch
+            probs = model(input_ids=input_ids, token_type_ids=token_type_ids)
+            loss = criterion(probs, labels)
+            correct = metric.compute(probs, labels)
+            metric.update(correct)
+            acc = metric.accumulate()
+
+            global_step += 1
+
+            if global_step % 10 == 0:
+                print(
+                    'global step: %d, epoch: %d, batch: %d, loss: %.5f, acc: %.5f speed: %.2f step/s'
+                    % (global_step, epoch, step, loss, acc, 10 / (time.time() - tic_train))
+                )
+            loss.backward()
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.clear_grad()
+
+            if global_step % 100 == 0:
+                evaluate(model, criterion, metric, dev_dataloader)
+    save_dir = os.path.join("checkpoint", "model %d" % global_step)
+    os.mkdir(save_dir)
+
+    save_param_dir = os.path.join(save_dir, "model_state.pdparams")
+    paddle.save(model.state_dict(), save_param_dir)
+    tokenizer.save_pretrained(save_dir)
 
 
 if __name__ == '__main__':
